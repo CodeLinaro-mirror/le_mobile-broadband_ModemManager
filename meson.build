@@ -408,6 +408,7 @@ endif
 subdir('libmm-glib')
 subdir('src')
 subdir('cli')
+subdir('gui')
 
 if enable_tests
   subdir('test')
