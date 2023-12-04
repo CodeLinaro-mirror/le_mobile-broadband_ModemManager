@@ -143,7 +143,6 @@ glib_version = '2.56'
 gio_unix_dep = dependency('gio-unix-2.0')
 glib_dep = dependency('glib-2.0', version: '>= ' + glib_version)
 gmodule_dep = dependency('gmodule-2.0')
-
 deps = [
   glib_dep,
   dependency('gio-2.0'),
