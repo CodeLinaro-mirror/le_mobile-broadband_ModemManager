@@ -52,6 +52,7 @@
 #include "mm-sms-part-cdma.h"
 #include "mm-call-qmi.h"
 #include "mm-call-list.h"
+#include "mm-sms-storage.h"
 
 static void iface_modem_init (MMIfaceModem *iface);
 static void iface_modem_3gpp_init (MMIfaceModem3gpp *iface);
@@ -7404,6 +7405,8 @@ messaging_load_supported_storages_finish (MMIfaceModemMessaging *_self,
     }
     supported = MM_SMS_STORAGE_ME;
     g_array_append_val (*mem1, supported);
+    supported = MM_SMS_STORAGE_TA;
+    g_array_append_val (*mem1, supported);
     *mem2 = g_array_ref (*mem1);
     *mem3 = g_array_ref (*mem1);
     return TRUE;
@@ -7828,6 +7831,48 @@ wms_list_messages_ready (QmiClientWms *client,
 }
 
 static void
+load_messages_from_local_storage (GTask *task)
+{
+    MMBroadbandModemQmi *self;
+    LoadInitialSmsPartsContext *ctx;
+    GList *indexs, *l;
+    GError *error = NULL;
+    gchar *pdu;
+    MMSmsState state;
+
+    self = g_task_get_source_object (task);
+    ctx = g_task_get_task_data (task);
+    mm_obj_dbg (self, "load_messages_from_local_storage");
+    /* read all indexes from storage */
+    indexs = mm_sms_storage_read_all_indexces (&error);
+
+    for (l = indexs; l; l = g_list_next (l))
+    {
+        if (mm_sms_storage_read_message (l->data, &pdu, &state, &error)) {
+
+            MMSmsPart *part;
+            part = mm_sms_part_3gpp_new_from_pdu (l->data, pdu, self, &error);
+            if (part) {
+                mm_obj_dbg (self, "correctly parsed PDU (%d)", l->data);
+                mm_iface_modem_messaging_take_part (MM_IFACE_MODEM_MESSAGING (self),
+                                                    part,
+                                                    state != MM_SMS_STATE_UNKNOWN? 
+                                                    state: MM_SMS_STATE_STORED,
+                                                    ctx->storage);
+            } else {
+                /* Don't treat the error as critical */
+                mm_obj_dbg (self, "error parsing PDU (%d): %s", l->data, error->message);
+                g_clear_error (&error);
+            }
+        } else {
+            mm_obj_warn (self, "Failed to read the messages");
+        }
+   }
+
+   g_task_return_boolean (task, TRUE);
+}
+
+static void
 load_initial_sms_parts_step (GTask *task)
 {
     MMBroadbandModemQmi *self;
@@ -7991,18 +8036,24 @@ load_initial_sms_parts (MMIfaceModemMessaging *_self,
         return iface_modem_messaging_parent->load_initial_sms_parts (_self, storage, callback, user_data);
     }
 
+    ctx = g_slice_new0 (LoadInitialSmsPartsContext);
+    ctx->storage = storage;
+
+    task = g_task_new (self, NULL, callback, user_data);
+    g_task_set_task_data (task, ctx, (GDestroyNotify)load_initial_sms_parts_context_free);
+
+    if (ctx->storage == MM_SMS_STORAGE_TA) {
+        load_messages_from_local_storage(task);
+        return;
+    }
+
     if (!mm_shared_qmi_ensure_client (MM_SHARED_QMI (self),
                                       QMI_SERVICE_WMS, &client,
                                       callback, user_data))
         return;
 
-    ctx = g_slice_new0 (LoadInitialSmsPartsContext);
     ctx->client = QMI_CLIENT_WMS (g_object_ref (client));
-    ctx->storage = storage;
     ctx->step = LOAD_INITIAL_SMS_PARTS_STEP_FIRST;
-
-    task = g_task_new (self, NULL, callback, user_data);
-    g_task_set_task_data (task, ctx, (GDestroyNotify)load_initial_sms_parts_context_free);
 
     load_initial_sms_parts_step (task);
 }

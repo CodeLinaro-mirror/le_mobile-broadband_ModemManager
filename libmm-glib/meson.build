@@ -61,6 +61,7 @@ headers = files(
   'mm-sms.h',
   'mm-sms-properties.h',
   'mm-unlock-retries.h',
+  'mm-sms-storage.h',
 )
 
 install_headers(
@@ -123,9 +124,10 @@ sources = files(
   'mm-sms.c',
   'mm-sms-properties.c',
   'mm-unlock-retries.c',
+  'mm-sms-storage.c',
 )
-
-deps = [include_dep]
+glib_json_dp = dependency('json-glib-1.0', version: '>= 1.0')
+deps = [include_dep,glib_json_dp]
 
 libname = 'mm-glib'
 
