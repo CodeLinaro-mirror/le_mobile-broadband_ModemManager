@@ -143,7 +143,6 @@ glib_version = '2.56'
 gio_unix_dep = dependency('gio-unix-2.0')
 glib_dep = dependency('glib-2.0', version: '>= ' + glib_version)
 gmodule_dep = dependency('gmodule-2.0')
-
 deps = [
   glib_dep,
   dependency('gio-2.0'),
@@ -408,6 +407,7 @@ endif
 subdir('libmm-glib')
 subdir('src')
 subdir('cli')
+subdir('gui')
 
 if enable_tests
   subdir('test')

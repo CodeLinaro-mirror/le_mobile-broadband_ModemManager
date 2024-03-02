@@ -33,6 +33,7 @@
 #include "mm-sms-part-3gpp.h"
 #include "mm-sms-part-cdma.h"
 #include "mm-log-object.h"
+#include "mm-sms-storage.h"
 
 G_DEFINE_TYPE (MMSmsQmi, mm_sms_qmi, MM_TYPE_BASE_SMS)
 
@@ -230,6 +231,33 @@ sms_store_next_part (GTask *task)
 
         g_object_unref (task);
         return;
+    }
+
+    /* Save the message in local data base */
+    if(ctx->storage == MM_SMS_STORAGE_TA) {
+        guint32 idx;
+        gchar *hex;
+        GError *error = NULL;
+        mm_obj_dbg (self, "sms_store_next_part, storing in TA");
+        hex = mm_utils_bin2hexstr (pdu, pdulen);
+        MMSmsState state = mm_gdbus_sms_get_state (MM_GDBUS_SMS (self));
+        if (!mm_sms_storage_store_message(hex, state, &idx, &error)) {
+            g_task_return_error (task, error);
+            g_object_unref (task);
+            g_free (hex);
+            return;
+        } else {
+            GList *parts;
+            /* Set the index in the part we hold */
+            parts = mm_base_sms_get_parts (self);
+            mm_sms_part_set_index ((MMSmsPart *)parts->data, (guint)idx);
+
+            /* Go on with next one */
+            ctx->current = g_list_next (ctx->current);
+            g_free (hex);
+            sms_store_next_part (task);
+            return;
+        }
     }
 
     /* Convert to GArray */
@@ -617,7 +645,8 @@ sms_send (MMBaseSms *self,
                   NULL);
 
     /* If the SMS is STORED, try to send from storage */
-    ctx->from_storage = (mm_base_sms_get_storage (self) != MM_SMS_STORAGE_UNKNOWN);
+    ctx->from_storage = ((mm_base_sms_get_storage (self) != MM_SMS_STORAGE_UNKNOWN) &&
+                         (mm_base_sms_get_storage (self) != MM_SMS_STORAGE_TA));
 
     ctx->current = mm_base_sms_get_parts (self);
 
@@ -726,6 +755,21 @@ delete_next_part (GTask *task)
             g_task_return_boolean (task, TRUE);
 
         g_object_unref (task);
+        return;
+    }
+
+    /* If the storage is TA delete the message from local storage */
+    if (mm_base_sms_get_storage (self) == MM_SMS_STORAGE_TA) {
+        GError *error = NULL;
+        mm_obj_dbg (self, "delete_next_part, deleteing in TA");
+        if(!mm_sms_storage_delete_message (
+                (guint32)mm_sms_part_get_index ((MMSmsPart *)ctx->current->data), error))
+            ctx->n_failed++;
+        /* We reset the index, as there is no longer that part */
+        mm_sms_part_set_index ((MMSmsPart *)ctx->current->data, SMS_PART_INVALID_INDEX);
+
+        ctx->current = g_list_next (ctx->current);
+        delete_next_part (task);
         return;
     }
 
