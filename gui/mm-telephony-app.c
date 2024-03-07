@@ -24,6 +24,9 @@ struct smsEditor {
   gboolean shift;
 };
 
+// To keep track of MT SMS for long sms
+static GList *monitored_sms_list;
+
 // To keep track of focused text view
 static gboolean is_number_view_active;
 
@@ -276,14 +279,16 @@ void display_virtual_key_board(struct smsEditor *editor) {
 void network_type_changed(GtkComboBox *combo, gpointer data) {
   GError *error = NULL;
   GtkComboBoxText *combo_text = (GtkComboBoxText *)combo;
-  printf("network_type_changed: %s \n", gtk_combo_box_text_get_active_text(combo_text));
-  MMModemMode preferred = mm_common_get_modes_from_string(
-      gtk_combo_box_text_get_active_text(combo_text));
-  if (!mm_modem_set_current_modes_sync(ctx->modem, ctx->allowed_modes, preferred, NULL, &error)) {
-    g_printerr("network_type_changed error: couldn't set preferred network mode: %s\n",
-        error ? error->message : "unknown error");
-  } else {
-    printf("network_type_changed, set preferred network mode is SUCCESS\n");
+  gchar *preferred_text = gtk_combo_box_text_get_active_text(combo_text);
+  if (preferred_text) {
+    printf("network_type_changed: %s \n", preferred_text);
+    MMModemMode preferred = mm_common_get_modes_from_string(preferred_text);
+    if (!mm_modem_set_current_modes_sync(ctx->modem, ctx->allowed_modes, preferred, NULL, &error)) {
+      g_printerr("network_type_changed error: couldn't set preferred network mode: %s\n",
+          error ? error->message : "unknown error");
+    } else {
+      printf("network_type_changed, set preferred network mode is SUCCESS\n");
+    }
   }
 }
 
@@ -369,6 +374,12 @@ gboolean initializeContext() {
   MMModem  *modem;
   MMModemMessaging *modem_messaging;
 
+  if (!modems) {
+    g_printerr ("error: no modems found\n");
+    g_object_unref(ctx->manager);
+    return FALSE;
+  }
+
   // Taking first found modem
   MMObject *obj = MM_OBJECT (modems[0].data);
   modem = mm_object_get_modem (obj);
@@ -390,6 +401,15 @@ gboolean initializeContext() {
 
   ctx->modem = modem;
   ctx->modem_messaging = modem_messaging;
+
+  // Enable Modem
+  gboolean result = mm_modem_enable_sync(modem, NULL, &error);
+  if (!result) {
+    g_printerr("error: couldn't enable modem \n");
+    g_object_unref(ctx->manager);
+    return FALSE;
+  }
+
   return TRUE;
 }
 
@@ -399,12 +419,25 @@ static void sms_state_updated(MMSms *sms) {
 
   if (state == MM_SMS_STATE_RECEIVED) {
     g_print ("[%s] new sms : %s\n", mm_sms_get_path (sms), mm_sms_state_get_string (state));
+    // Store MT message to the data base
+    GError *error = NULL;
+    if (!mm_sms_store_sync(sms, MM_SMS_STORAGE_TA, NULL, &error)) {
+      g_printerr("Not able to store incoming message to data base : %s\n",
+          error ? error->message : "unknown error");
+    }
   }
 }
 
 // Call back for MT SMS received
 static gboolean sms_added(MMModemMessaging *modem_messaging, const gchar *sms_path,
     gboolean received) {
+
+  // Process only MT messages
+  if (!received) {
+    g_print("Received signal is not for MT SMS\n");
+    return TRUE;
+  }
+
   GList *sms_list;
   GList *l;
   MMSms *new_sms = NULL;
@@ -423,9 +456,15 @@ static gboolean sms_added(MMModemMessaging *modem_messaging, const gchar *sms_pa
 
   // MT SMS not received completely
   if (state == MM_SMS_STATE_RECEIVING) {
+    monitored_sms_list = g_list_append(monitored_sms_list, g_object_ref(new_sms));
     g_signal_connect (new_sms, "notify::state", G_CALLBACK (sms_state_updated), NULL);
   } else if (state == MM_SMS_STATE_RECEIVED) {
     g_print ("[%s] new sms: %s\n", mm_sms_get_path (new_sms), mm_sms_state_get_string (state));
+    // Store MT message to the data base
+    if (!mm_sms_store_sync(new_sms, MM_SMS_STORAGE_TA, NULL, &error)) {
+      g_printerr("Not able to store incoming message to data base : %s\n",
+          error ? error->message : "unknown error");
+    }
   } else {
     g_print("Received signal is not for MT SMS\n");
   }
