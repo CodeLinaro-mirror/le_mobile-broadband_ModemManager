@@ -37,6 +37,7 @@ struct _MMSmsPart {
     gchar *text;
     MMSmsEncoding encoding;
     GByteArray *data;
+    GByteArray *pdu;
     gint  class;
     guint validity_relative;
     gboolean delivery_report_request;
@@ -161,6 +162,26 @@ mm_sms_part_take_data (MMSmsPart *self,
     if (self->data)
         g_byte_array_unref (self->data);
     self->data = value;
+}
+
+PART_GET_FUNC (const GByteArray *, pdu)
+
+void
+mm_sms_part_set_pdu (MMSmsPart *self,
+                      GByteArray *value)
+{
+    if (self->pdu)
+        g_byte_array_unref (self->pdu);
+    self->pdu = (value ? g_byte_array_ref (value) : NULL);
+}
+
+void
+mm_sms_part_take_pdu (MMSmsPart *self,
+                       GByteArray *value)
+{
+    if (self->pdu)
+        g_byte_array_unref (self->pdu);
+    self->pdu = value;
 }
 
 gboolean

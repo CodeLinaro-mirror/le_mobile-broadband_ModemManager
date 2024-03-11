@@ -391,6 +391,7 @@ mm_sms_part_3gpp_new_from_binary_pdu (guint         index,
     guint tp_user_data_len_offset = 0;
     MMSmsEncoding user_data_encoding = MM_SMS_ENCODING_UNKNOWN;
     gchar *address;
+    GArray *array;
 
     /* Create the new MMSmsPart */
     sms_part = mm_sms_part_new (index, MM_SMS_PDU_TYPE_UNKNOWN);
@@ -810,7 +811,10 @@ mm_sms_part_3gpp_new_from_binary_pdu (guint         index,
             }
         }
     }
-
+    array = g_array_append_vals (g_array_sized_new (FALSE, FALSE, sizeof (guint8), pdu_len),
+                                     pdu,
+                                     pdu_len);
+    mm_sms_part_set_pdu (sms_part, array);
     return sms_part;
 }
 
