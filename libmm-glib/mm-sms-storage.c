@@ -12,7 +12,6 @@
 #include <ModemManager.h>
 #define _LIBMM_INSIDE_MM
 #include <libmm-glib.h>
-#include <gdbm.h>
 #include "json-glib/json-glib.h"
 #include "mm-common-helpers.h"
 #include "mm-sms-storage.h"

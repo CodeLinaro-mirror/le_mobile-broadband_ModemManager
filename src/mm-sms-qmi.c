@@ -211,11 +211,24 @@ sms_store_next_part (GTask *task)
         return;
     }
 
-    /* Get PDU */
-    if (MM_SMS_PART_IS_3GPP ((MMSmsPart *)ctx->current->data))
-        pdu = mm_sms_part_3gpp_get_submit_pdu ((MMSmsPart *)ctx->current->data, &pdulen, &msgstart, self, &error);
-    else if (MM_SMS_PART_IS_CDMA ((MMSmsPart *)ctx->current->data))
-        pdu = mm_sms_part_cdma_get_submit_pdu ((MMSmsPart *)ctx->current->data, &pdulen, self, &error);
+    if (mm_sms_part_get_pdu((MMSmsPart *)ctx->current->data)) {
+        mm_obj_dbg (self, "sms_store_next_part, PDU is present in sms part");
+        GArray *array_pdu;
+        array_pdu = mm_sms_part_get_pdu((MMSmsPart *)ctx->current->data);
+        mm_obj_dbg (self, "sms_store_next_part, PDU is present in sms part lenn:%d",
+                    array_pdu->len);
+        pdu = (guint8 *)array_pdu->data;
+        pdulen = array_pdu->len;
+    } else {
+        mm_obj_dbg (self, "sms_store_next_part, get submit PDU");
+        /* Get PDU */
+        if (MM_SMS_PART_IS_3GPP ((MMSmsPart *)ctx->current->data))
+            pdu = mm_sms_part_3gpp_get_submit_pdu ((MMSmsPart *)ctx->current->data,
+                                                    &pdulen, &msgstart, self, &error);
+        else if (MM_SMS_PART_IS_CDMA ((MMSmsPart *)ctx->current->data))
+            pdu = mm_sms_part_cdma_get_submit_pdu ((MMSmsPart *)ctx->current->data, &pdulen,
+                                                    self, &error);
+    }
 
     if (!pdu) {
         if (error)

@@ -7536,14 +7536,28 @@ messaging_set_default_storage (MMIfaceModemMessaging *_self,
     /* Build routes array and add it as input
      * Just worry about Class 0 and Class 1 messages for now */
     input = qmi_message_wms_set_routes_input_new ();
-    routes_array = g_array_sized_new (FALSE, FALSE, sizeof (route), 2);
+    routes_array = g_array_sized_new (FALSE, FALSE, sizeof (route), 6);
     route.message_type = QMI_WMS_MESSAGE_TYPE_POINT_TO_POINT;
     route.message_class = QMI_WMS_MESSAGE_CLASS_0;
-    route.storage = mm_sms_storage_to_qmi_storage_type (storage);
-    route.receipt_action = QMI_WMS_RECEIPT_ACTION_STORE_AND_NOTIFY;
+    route.storage = QMI_WMS_STORAGE_TYPE_NONE;
+    route.receipt_action =  QMI_WMS_RECEIPT_ACTION_TRANSFER_ONLY;
     g_array_append_val (routes_array, route);
+
     route.message_class = QMI_WMS_MESSAGE_CLASS_1;
     g_array_append_val (routes_array, route);
+
+    route.message_class = QMI_WMS_MESSAGE_CLASS_2;
+    g_array_append_val (routes_array, route);
+
+    route.message_class = QMI_WMS_MESSAGE_CLASS_3;
+    g_array_append_val (routes_array, route);
+
+    route.message_class = QMI_WMS_MESSAGE_CLASS_NONE;
+    g_array_append_val (routes_array, route);
+
+    route.message_class = QMI_WMS_MESSAGE_CLASS_CDMA;
+    g_array_append_val (routes_array, route);
+
     qmi_message_wms_set_routes_input_set_route_list (input, routes_array, NULL);
 
     mm_obj_dbg (self, "setting default messaging routes...");
@@ -7830,6 +7844,27 @@ wms_list_messages_ready (QmiClientWms *client,
     read_next_sms_part (task);
 }
 
+MMSmsPart *
+mm_create_sms_part_from_pdu (guint index,
+                        const gchar  *hexpdu,
+                        MMSmsState state,
+                        gpointer      log_object,
+                        GError      **error)
+{
+    g_autofree guint8 *pdu = NULL;
+    gsize              pdu_len;
+
+    /* Convert PDU from hex to binary */
+    pdu = mm_utils_hexstr2bin (hexpdu, -1, &pdu_len, error);
+    if (!pdu) {
+        g_prefix_error (error, "Couldn't convert 3GPP PDU from hex to binary: ");
+        return NULL;
+    }
+
+    return mm_sms_part_3gpp_new_from_binary_pdu (index, pdu, pdu_len, log_object,
+                                                    state == MM_SMS_STATE_RECEIVED, error);
+}
+
 static void
 load_messages_from_local_storage (GTask *task)
 {
@@ -7851,7 +7886,7 @@ load_messages_from_local_storage (GTask *task)
         if (mm_sms_storage_read_message (l->data, &pdu, &state, &error)) {
 
             MMSmsPart *part;
-            part = mm_sms_part_3gpp_new_from_pdu (l->data, pdu, self, &error);
+            part = mm_create_sms_part_from_pdu (l->data, pdu, state, self, &error);
             if (part) {
                 mm_obj_dbg (self, "correctly parsed PDU (%d)", l->data);
                 mm_iface_modem_messaging_take_part (MM_IFACE_MODEM_MESSAGING (self),

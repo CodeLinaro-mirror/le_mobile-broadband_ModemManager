@@ -105,6 +105,11 @@ void              mm_sms_part_set_data               (MMSmsPart *part,
 void              mm_sms_part_take_data              (MMSmsPart *part,
                                                       GByteArray *data);
 
+const GByteArray *mm_sms_part_get_pdu               (MMSmsPart *part);
+void              mm_sms_part_set_pdu               (MMSmsPart *part,
+                                                      GByteArray *data);
+void              mm_sms_part_take_pdu              (MMSmsPart *part,
+                                                      GByteArray *data);
 MMSmsEncoding     mm_sms_part_get_encoding           (MMSmsPart *part);
 void              mm_sms_part_set_encoding           (MMSmsPart *part,
                                                       MMSmsEncoding encoding);

@@ -500,10 +500,9 @@ if plugins_options['huawei']
       '@INPUT@'],
     capture: true,
   )
-
   plugins += {'plugin-huawei': {
     'plugin': true,
-    'helper': {'sources': files('huawei/mm-modem-helpers-huawei.c'), 'include_directories': plugins_incs + [huawei_inc], 'c_args': common_c_args},
+    'helper': {'sources': files('huawei/mm-modem-helpers-huawei.c') + enums_sources[1], 'include_directories': plugins_incs + [huawei_inc], 'c_args': common_c_args},
     'module': {'sources': sources + enums_sources, 'include_directories': plugins_incs + [huawei_inc], 'c_args': common_c_args},
     'test': {'sources': files('huawei/tests/test-modem-helpers-huawei.c') + enums_sources, 'include_directories': huawei_inc, 'dependencies': libhelpers_dep},
   }}
