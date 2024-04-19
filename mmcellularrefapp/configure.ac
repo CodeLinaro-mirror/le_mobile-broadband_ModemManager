@@ -1,0 +1,35 @@
+AC_PREREQ(2.61)
+AC_INIT([mmcellularrefapp], 1.0.0)
+AM_INIT_AUTOMAKE([-Wall gnu foreign])
+AM_MAINTAINER_MODE
+AC_CONFIG_SRCDIR([mm-cellular-ref-app.c])
+AC_CONFIG_HEADER([config.h])
+AC_CONFIG_MACRO_DIR([m4])
+
+# Checks for programs.
+AC_PROG_CC
+AM_PROG_CC_C_O
+AM_PROG_AS
+AC_PROG_LIBTOOL
+AC_PROG_AWK
+AC_PROG_CPP
+AC_PROG_INSTALL
+AC_PROG_LN_S
+AC_PROG_MAKE_SET
+
+PKG_PROG_PKG_CONFIG
+
+
+AS_CASE([$host],
+    [arm*], [ARM=yes],
+    [ARM=no]
+)
+
+AM_CONDITIONAL(ARM, [test "x$ARM" = "xyes"])
+
+AC_SUBST([CFLAGS])
+AC_SUBST([CC])
+AC_SUBST([CPPFLAGS])
+AC_CONFIG_FILES([Makefile])
+
+AC_OUTPUT
