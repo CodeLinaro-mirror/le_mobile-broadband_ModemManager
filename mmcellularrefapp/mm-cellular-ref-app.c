@@ -287,7 +287,7 @@ static int mm_invoke_connect_script(MMBearer *bearer)
     argc = 0;
     g_print("Bring_up_call.sh arguments %s %s %s\n", address, prefix, interface);
     /* NULL terminate argument vector */
-    argv[0] = "./etc/initscripts/bring_up_call.sh";
+    argv[0] = "/usr/bin/bring_up_call.sh";
     argv[1] = address;
     argv[2] = prefix;
     argv[3] = interface;
