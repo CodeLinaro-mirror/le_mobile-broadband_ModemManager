@@ -347,9 +347,6 @@ int mm_test_bearer_action(char* bearer_path, bool connect)
         {
             res = mm_bearer_connect_sync(ctx->bearer, NULL, &error);
             res = connect_process_reply(res, error);
-            if(res != 0) {
-                mm_test_bearer_init(manager, FALSE);
-            }
         }
     }
     else
@@ -386,9 +383,17 @@ void process_input(char input)
             }
             manager = mm_initialize();
             bearer = get_bearer (manager, bearPath);
+<<<<<<< HEAD
             res = mm_invoke_connect_script(bearer);
             if(!res) {
                 g_print("Bearer connected on bearPath %s\n", bearPath);
+=======
+            if (bearer) {
+                res = mm_invoke_connect_script(bearer);
+                if(!res) {
+                    g_print("Bearer connected on bearPath %s\n", bearPath);
+                }
+>>>>>>> 3a6d486cec179ec91c21863ea9c535a2089d56aa
             }
             break;
         case 'd':

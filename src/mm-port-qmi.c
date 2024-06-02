@@ -982,7 +982,6 @@ internal_reset (MMPortQmi           *self,
 {
     GTask                *task;
     InternalResetContext *ctx;
-    guint                 mtu;
 
     task = g_task_new (self, NULL, callback, user_data);
 
@@ -991,18 +990,12 @@ internal_reset (MMPortQmi           *self,
     ctx->device = g_object_ref (device);
     g_task_set_task_data (task, ctx, (GDestroyNotify) internal_reset_context_free);
 
-    /* mhi_net has a custom default MTU set by the kernel driver */
-    if (g_strcmp0 (self->priv->net_driver, "mhi_net") == 0)
-        mtu = MHI_NET_MTU_DEFAULT;
-    else
-        mtu = MM_PORT_NET_MTU_DEFAULT;
-
     /* first, bring down main interface */
     mm_obj_dbg (self, "bringing down data interface '%s'",
                 mm_port_get_device (ctx->data));
     mm_port_net_link_setup (MM_PORT_NET (ctx->data),
                             FALSE,
-                            mtu,
+                            0, /* Do not update MTU of physical device */
                             NULL,
                             (GAsyncReadyCallback) net_link_down_ready,
                             task);
