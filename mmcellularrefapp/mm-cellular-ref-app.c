@@ -383,17 +383,11 @@ void process_input(char input)
             }
             manager = mm_initialize();
             bearer = get_bearer (manager, bearPath);
-<<<<<<< HEAD
-            res = mm_invoke_connect_script(bearer);
-            if(!res) {
-                g_print("Bearer connected on bearPath %s\n", bearPath);
-=======
             if (bearer) {
                 res = mm_invoke_connect_script(bearer);
                 if(!res) {
                     g_print("Bearer connected on bearPath %s\n", bearPath);
                 }
->>>>>>> 3a6d486cec179ec91c21863ea9c535a2089d56aa
             }
             break;
         case 'd':
