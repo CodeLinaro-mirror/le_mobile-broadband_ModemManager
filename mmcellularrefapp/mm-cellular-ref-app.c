@@ -120,6 +120,10 @@ static MMBearer* get_bearer(MMManager *manager, char *bearer_path)
     GError *error = NULL;
     MMObject *object;
     MMModem *modem = NULL;
+
+    if (!manager)
+        return NULL;
+
     g_mutex_lock (&manager_mutex);
     modems = g_dbus_object_manager_get_objects (G_DBUS_OBJECT_MANAGER (manager));
     g_mutex_unlock (&manager_mutex);

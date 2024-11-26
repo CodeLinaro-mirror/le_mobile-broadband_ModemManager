@@ -537,15 +537,17 @@ int main(int argc, char *argv[]) {
   int preferred_index = 0;
   if (mm_modem_get_current_modes(ctx->modem, &(ctx->allowed_modes), &preferred_mode)) {
     allowed_modes_string = mm_modem_mode_build_string_from_mask(ctx->allowed_modes);
-    g_auto(GStrv) mode_strings = g_strsplit(allowed_modes_string, ", ", -1);
-    g_free(allowed_modes_string);
-    int i;
-    gchar *preferred_string = mm_modem_mode_build_string_from_mask(preferred_mode);
-    for (i = 0; mode_strings[i]; i++) {
-      if (!g_strcmp0(mode_strings[i], preferred_string)) {
-        preferred_index = i;
+    if (allowed_modes_string) {
+      g_auto(GStrv) mode_strings = g_strsplit(allowed_modes_string, ", ", -1);
+      g_free(allowed_modes_string);
+      int i;
+      gchar *preferred_string = mm_modem_mode_build_string_from_mask(preferred_mode);
+      for (i = 0; mode_strings[i]; i++) {
+        if (!g_strcmp0(mode_strings[i], preferred_string)) {
+          preferred_index = i;
+        }
+        gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), NULL, mode_strings[i]);
       }
-      gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), NULL, mode_strings[i]);
     }
   }
 
