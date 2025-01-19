@@ -407,7 +407,6 @@ endif
 subdir('libmm-glib')
 subdir('src')
 subdir('cli')
-subdir('gui')
 subdir('mmcellularrefapp')
 
 if enable_tests
