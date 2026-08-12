@@ -1088,8 +1088,8 @@ test_normalize_operator (void)
 /* Test CREG/CGREG responses and unsolicited messages */
 
 typedef struct {
-    GPtrArray *solicited_creg;
-    GPtrArray *unsolicited_creg;
+    GRegex *solicited_creg;
+    GRegex *unsolicited_creg;
 } RegTestData;
 
 static RegTestData *
@@ -1106,8 +1106,8 @@ reg_test_data_new (void)
 static void
 reg_test_data_free (RegTestData *data)
 {
-    mm_3gpp_creg_regex_destroy (data->solicited_creg);
-    mm_3gpp_creg_regex_destroy (data->unsolicited_creg);
+    g_regex_unref (data->solicited_creg);
+    g_regex_unref (data->unsolicited_creg);
     g_free (data);
 }
 
@@ -1131,7 +1131,6 @@ test_creg_match (const char *test,
                  const CregResult *result)
 {
     g_autoptr(GMatchInfo)         info  = NULL;
-    guint                         i;
     MMModem3gppRegistrationState  state = MM_MODEM_3GPP_REGISTRATION_STATE_UNKNOWN;
     MMModemAccessTechnology       access_tech = MM_MODEM_ACCESS_TECHNOLOGY_UNKNOWN;
     gulong                        lac = 0;
@@ -1141,37 +1140,24 @@ test_creg_match (const char *test,
     gboolean                      cgreg = FALSE;
     gboolean                      cereg = FALSE;
     gboolean                      c5greg = FALSE;
-    guint                         regex_num = 0;
-    GPtrArray                    *array;
+    GRegex                        *regex;
 
     g_assert (reply);
     g_assert (test);
     g_assert (data);
     g_assert (result);
 
-    g_debug ("Testing '%s' +C%sREG %s response...",
+    g_debug ("Testing '%s' +C%sREG %s response '%s'...",
              test,
              result->cgreg ? "G" : "",
-             solicited ? "solicited" : "unsolicited");
+             solicited ? "solicited" : "unsolicited",
+             reply);
 
-    array = solicited ? data->solicited_creg : data->unsolicited_creg;
-    for (i = 0; i < array->len; i++) {
-        GRegex *r = g_ptr_array_index (array, i);
-
-        if (g_regex_match (r, reply, 0, &info)) {
-            g_debug ("  matched with %d", i);
-            regex_num = i;
-            break;
-        }
-        g_clear_pointer (&info, g_match_info_free);
+    regex = solicited ? data->solicited_creg : data->unsolicited_creg;
+    if (!g_regex_match (regex, reply, 0, &info)) {
+        g_debug ("not matched");
+        g_assert (FALSE);
     }
-
-    g_debug ("  regex_num (%u) == result->regex_num (%u)",
-             regex_num,
-             result->regex_num);
-
-    g_assert (info != NULL);
-    g_assert_cmpuint (regex_num, ==, result->regex_num);
 
     success = mm_3gpp_parse_creg_response (info, NULL, &state, &lac, &ci, &access_tech, &cgreg, &cereg, &c5greg, &error);
 
@@ -1516,6 +1502,16 @@ test_creg2_s8500_wave_multidigit_stat_unsolicited (void *f, gpointer d)
     const CregResult result = { MM_MODEM_3GPP_REGISTRATION_STATE_ATTACHED_RLOS, 0x003F, 0x8FE3, MM_MODEM_ACCESS_TECHNOLOGY_UNKNOWN, 8, FALSE, FALSE, FALSE };
 
     test_creg_match ("Samsung Wave S8500 CREG=2 with multidigit \"stat\" value", FALSE, reply, data, &result);
+}
+
+static void
+test_creg2_s8500_wave_act_unsolicited (void *f, gpointer d)
+{
+    RegTestData *data = (RegTestData *) d;
+    const char *reply = "\r\n+CGREG: 2,11,003F,8FE3, 10, C2816\r\n";
+    const CregResult result = { MM_MODEM_3GPP_REGISTRATION_STATE_ATTACHED_RLOS, 0x003F, 0x8FE3, MM_MODEM_ACCESS_TECHNOLOGY_LTE, 8, TRUE, FALSE, FALSE };
+
+    test_creg_match ("Samsung Wave S8500 CREG=2 with act value", FALSE, reply, data, &result);
 }
 
 static void
@@ -5362,6 +5358,7 @@ int main (int argc, char **argv)
     g_test_suite_add (suite, TESTCASE (test_creg2_md400_unsolicited, reg_data));
     g_test_suite_add (suite, TESTCASE (test_creg2_s8500_wave_unsolicited, reg_data));
     g_test_suite_add (suite, TESTCASE (test_creg2_s8500_wave_multidigit_stat_unsolicited, reg_data));
+    g_test_suite_add (suite, TESTCASE (test_creg2_s8500_wave_act_unsolicited, reg_data));
     g_test_suite_add (suite, TESTCASE (test_creg2_gobi_weird_solicited, reg_data));
     g_test_suite_add (suite, TESTCASE (test_creg2_iridium_solicited, reg_data));
     g_test_suite_add (suite, TESTCASE (test_creg2_no_leading_zeros_solicited, reg_data));
