@@ -1137,6 +1137,7 @@ test_creg_match (const char *test,
     gulong                        ci = 0;
     GError                       *error = NULL;
     gboolean                      success;
+    gboolean                      matched;
     gboolean                      cgreg = FALSE;
     gboolean                      cereg = FALSE;
     gboolean                      c5greg = FALSE;
@@ -1154,15 +1155,18 @@ test_creg_match (const char *test,
              reply);
 
     regex = solicited ? data->solicited_creg : data->unsolicited_creg;
-    if (!g_regex_match (regex, reply, 0, &info)) {
-        g_debug ("not matched");
-        g_assert (FALSE);
+    g_regex_match (regex, reply, 0, &info);
+
+    while (g_match_info_matches (info)) {
+        matched = TRUE;
+        success = mm_3gpp_parse_creg_response (info, NULL, &state, &lac, &ci, &access_tech, &cgreg, &cereg, &c5greg, &error);
+
+        g_assert (success);
+        g_assert_no_error (error);
+        g_match_info_next (info, NULL);
     }
 
-    success = mm_3gpp_parse_creg_response (info, NULL, &state, &lac, &ci, &access_tech, &cgreg, &cereg, &c5greg, &error);
-
-    g_assert (success);
-    g_assert_no_error (error);
+    g_assert (matched);
     g_assert_cmpuint (state, ==, result->state);
     g_assert_cmpuint (lac, ==, result->lac);
     g_assert_cmpuint (ci, ==, result->ci);
@@ -1458,7 +1462,7 @@ test_creg_cgreg_multi_unsolicited (void *f, gpointer d)
 {
     RegTestData *data = (RegTestData *) d;
     const char *reply = "\r\n+CREG: 5\r\n\r\n+CGREG: 0\r\n";
-    const CregResult result = { MM_MODEM_3GPP_REGISTRATION_STATE_ROAMING, 0, 0, MM_MODEM_ACCESS_TECHNOLOGY_UNKNOWN, 0, FALSE, FALSE, FALSE };
+    const CregResult result = { MM_MODEM_3GPP_REGISTRATION_STATE_IDLE, 0, 0, MM_MODEM_ACCESS_TECHNOLOGY_UNKNOWN, 0, TRUE, FALSE, FALSE };
 
     test_creg_match ("Multi CREG/CGREG", FALSE, reply, data, &result);
 }
@@ -1468,9 +1472,19 @@ test_creg_cgreg_multi2_unsolicited (void *f, gpointer d)
 {
     RegTestData *data = (RegTestData *) d;
     const char *reply = "\r\n+CGREG: 0\r\n\r\n+CREG: 5\r\n";
-    const CregResult result = { MM_MODEM_3GPP_REGISTRATION_STATE_IDLE, 0, 0, MM_MODEM_ACCESS_TECHNOLOGY_UNKNOWN, 0, TRUE, FALSE, FALSE };
+    const CregResult result = { MM_MODEM_3GPP_REGISTRATION_STATE_ROAMING, 0, 0, MM_MODEM_ACCESS_TECHNOLOGY_UNKNOWN, 0, FALSE, FALSE, FALSE };
 
     test_creg_match ("Multi CREG/CGREG #2", FALSE, reply, data, &result);
+}
+
+static void
+test_cereg_multi_unsolicited (void *f, gpointer d)
+{
+    RegTestData *data = (RegTestData *) d;
+    const char *reply = "\r\n+CEREG:  2\r\n\r\n+CNSMOD: 8\r\n\r\n+CEREG: 1,AAAA,01234567,7\r\n";
+    const CregResult result = { MM_MODEM_3GPP_REGISTRATION_STATE_HOME, 0xAAAA, 0x1234567, MM_MODEM_ACCESS_TECHNOLOGY_LTE, 5, FALSE, TRUE, FALSE };
+
+    test_creg_match ("Multi CEREG", FALSE, reply, data, &result);
 }
 
 static void
@@ -5403,6 +5417,7 @@ int main (int argc, char **argv)
 
     g_test_suite_add (suite, TESTCASE (test_creg_cgreg_multi_unsolicited, reg_data));
     g_test_suite_add (suite, TESTCASE (test_creg_cgreg_multi2_unsolicited, reg_data));
+    g_test_suite_add (suite, TESTCASE (test_cereg_multi_unsolicited, reg_data));
 
     g_test_suite_add (suite, TESTCASE (test_cscs_icon225_support_response, NULL));
     g_test_suite_add (suite, TESTCASE (test_cscs_sierra_mercury_support_response, NULL));
