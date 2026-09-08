@@ -38,10 +38,11 @@ ATTRS{idVendor}=="1199", ATTRS{idProduct}=="9079", ENV{.MM_USBIFNUM}=="03", SUBS
 ATTRS{idVendor}=="1199", ATTRS{idProduct}=="9079", ENV{.MM_USBIFNUM}=="02", SUBSYSTEM=="tty", ENV{ID_MM_PORT_TYPE_GPS}="1"
 ATTRS{idVendor}=="1199", ATTRS{idProduct}=="9079", ENV{.MM_USBIFNUM}=="00", SUBSYSTEM=="tty", ENV{ID_MM_PORT_TYPE_QCDM}="1"
 
-# RC7611 port hints
+# RC7611 port hints and disable PCO
 #  if 03: primary port
 #  if 02: raw NMEA port
 #  if 00: diag/qcdm port
+ATTRS{idVendor}=="1199", ATTRS{idProduct}=="68c0", ENV{ID_MM_QMI_PCO_DISABLED}="1"
 ATTRS{idVendor}=="1199", ATTRS{idProduct}=="68c0", ENV{.MM_USBIFNUM}=="03", SUBSYSTEM=="tty", ENV{ID_MM_PORT_TYPE_AT_PRIMARY}="1"
 ATTRS{idVendor}=="1199", ATTRS{idProduct}=="68c0", ENV{.MM_USBIFNUM}=="02", SUBSYSTEM=="tty", ENV{ID_MM_PORT_TYPE_GPS}="1"
 ATTRS{idVendor}=="1199", ATTRS{idProduct}=="68c0", ENV{.MM_USBIFNUM}=="00", SUBSYSTEM=="tty", ENV{ID_MM_PORT_TYPE_QCDM}="1"
