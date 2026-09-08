@@ -141,14 +141,13 @@ MMFlowControl mm_flow_control_from_string (const gchar  *str,
 gboolean mm_modem_3gpp_registration_state_is_registered (MMModem3gppRegistrationState state);
 
 /* Common Regex getters */
-GPtrArray *mm_3gpp_creg_regex_get     (gboolean solicited);
-void       mm_3gpp_creg_regex_destroy (GPtrArray *array);
-GRegex    *mm_3gpp_ciev_regex_get (void);
-GRegex    *mm_3gpp_cgev_regex_get (void);
-GRegex    *mm_3gpp_cusd_regex_get (void);
-GRegex    *mm_3gpp_cmti_regex_get (void);
-GRegex    *mm_3gpp_cds_regex_get (void);
-GRegex    *mm_3gpp_cbm_regex_get (void);
+GRegex *mm_3gpp_creg_regex_get (gboolean solicited);
+GRegex *mm_3gpp_ciev_regex_get (void);
+GRegex *mm_3gpp_cgev_regex_get (void);
+GRegex *mm_3gpp_cusd_regex_get (void);
+GRegex *mm_3gpp_cmti_regex_get (void);
+GRegex *mm_3gpp_cds_regex_get (void);
+GRegex *mm_3gpp_cbm_regex_get (void);
 
 /* AT+WS46=? response parser: returns array of MMModemMode values */
 GArray *mm_3gpp_parse_ws46_test_response (const gchar  *response,

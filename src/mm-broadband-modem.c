@@ -218,7 +218,7 @@ struct _MMBroadbandModemPrivate {
     gboolean modem_3gpp_eps_network_supported;
     gboolean modem_3gpp_5gs_network_supported;
     /* Implementation helpers */
-    GPtrArray *modem_3gpp_registration_regex;
+    GRegex *modem_3gpp_registration_regex;
     MMModem3gppFacility modem_3gpp_ignored_facility_locks;
     MMBaseBearer *modem_3gpp_initial_eps_bearer;
     MMModem3gppPacketServiceState modem_3gpp_packet_service_state;
@@ -5267,32 +5267,28 @@ modem_3gpp_setup_unsolicited_registration_events (MMIfaceModem3gpp *self,
                                                   gpointer user_data)
 {
     MMPortSerialAt *ports[2];
-    GPtrArray *array;
+    g_autoptr(GRegex) regex = NULL;
     guint i;
-    guint j;
     GTask *task;
 
     ports[0] = mm_base_modem_peek_port_primary (MM_BASE_MODEM (self));
     ports[1] = mm_base_modem_peek_port_secondary (MM_BASE_MODEM (self));
 
     /* Set up CREG unsolicited message handlers in both ports */
-    array = mm_3gpp_creg_regex_get (FALSE);
+    regex = mm_3gpp_creg_regex_get (FALSE);
     for (i = 0; i < 2; i++) {
         if (!ports[i])
             continue;
 
         mm_obj_dbg (self, "setting up 3GPP unsolicited registration messages handlers in %s",
                     mm_port_get_device (MM_PORT (ports[i])));
-        for (j = 0; j < array->len; j++) {
-            mm_port_serial_at_add_unsolicited_msg_handler (
-                MM_PORT_SERIAL_AT (ports[i]),
-                (GRegex *) g_ptr_array_index (array, j),
-                (MMPortSerialAtUnsolicitedMsgFn)registration_state_changed,
-                self,
-                NULL);
-        }
+        mm_port_serial_at_add_unsolicited_msg_handler (
+            MM_PORT_SERIAL_AT (ports[i]),
+            regex,
+            (MMPortSerialAtUnsolicitedMsgFn)registration_state_changed,
+            self,
+            NULL);
     }
-    mm_3gpp_creg_regex_destroy (array);
 
     task = g_task_new (self, NULL, callback, user_data);
     g_task_return_boolean (task, TRUE);
@@ -5316,32 +5312,28 @@ modem_3gpp_cleanup_unsolicited_registration_events (MMIfaceModem3gpp *self,
                                                     gpointer user_data)
 {
     MMPortSerialAt *ports[2];
-    GPtrArray *array;
+    g_autoptr(GRegex) regex = NULL;
     guint i;
-    guint j;
     GTask *task;
 
     ports[0] = mm_base_modem_peek_port_primary (MM_BASE_MODEM (self));
     ports[1] = mm_base_modem_peek_port_secondary (MM_BASE_MODEM (self));
 
     /* Set up CREG unsolicited message handlers in both ports */
-    array = mm_3gpp_creg_regex_get (FALSE);
+    regex = mm_3gpp_creg_regex_get (FALSE);
     for (i = 0; i < 2; i++) {
         if (!ports[i])
             continue;
 
         mm_obj_dbg (self, "cleaning up unsolicited registration messages handlers in %s",
                     mm_port_get_device (MM_PORT (ports[i])));
-        for (j = 0; j < array->len; j++) {
-            mm_port_serial_at_add_unsolicited_msg_handler (
-                MM_PORT_SERIAL_AT (ports[i]),
-                (GRegex *) g_ptr_array_index (array, j),
-                NULL,
-                NULL,
-                NULL);
-        }
+        mm_port_serial_at_add_unsolicited_msg_handler (
+            MM_PORT_SERIAL_AT (ports[i]),
+            regex,
+            NULL,
+            NULL,
+            NULL);
     }
-    mm_3gpp_creg_regex_destroy (array);
 
     task = g_task_new (self, NULL, callback, user_data);
     g_task_return_boolean (task, TRUE);
@@ -5608,7 +5600,6 @@ registration_status_check_ready (MMBroadbandModem *self,
     RunRegistrationChecksContext *ctx;
     const gchar                  *response;
     GError                       *error = NULL;
-    guint                         i;
     gboolean                      parsed;
     gboolean                      cgreg = FALSE;
     gboolean                      cereg = FALSE;
@@ -5641,18 +5632,10 @@ registration_status_check_ready (MMBroadbandModem *self,
     }
 
     /* Try to match the response */
-    for (i = 0;
-         i < self->priv->modem_3gpp_registration_regex->len;
-         i++) {
-        if (g_regex_match ((GRegex *)g_ptr_array_index (self->priv->modem_3gpp_registration_regex, i),
-                           response,
-                           0,
-                           &match_info))
-            break;
-        g_clear_pointer (&match_info, g_match_info_free);
-    }
-
-    if (!match_info) {
+    if (!g_regex_match (self->priv->modem_3gpp_registration_regex,
+                        response,
+                        0,
+                        &match_info)) {
         error = g_error_new (MM_CORE_ERROR,
                              MM_CORE_ERROR_FAILED,
                              "Unknown registration status response: '%s'",
@@ -11704,9 +11687,8 @@ setup_ports (MMBroadbandModem *self)
     g_autoptr(GRegex)  ciev_regex = NULL;
     g_autoptr(GRegex)  cmti_regex = NULL;
     g_autoptr(GRegex)  cusd_regex = NULL;
-    GPtrArray         *array;
+    g_autoptr(GRegex)  creg_regex = NULL;
     guint              i;
-    guint              j;
 
     ports[0] = mm_base_modem_peek_port_primary (MM_BASE_MODEM (self));
     ports[1] = mm_base_modem_peek_port_secondary (MM_BASE_MODEM (self));
@@ -11722,7 +11704,7 @@ setup_ports (MMBroadbandModem *self)
                       NULL);
 
     /* Cleanup all unsolicited message handlers in all AT ports */
-    array = mm_3gpp_creg_regex_get (FALSE);
+    creg_regex = mm_3gpp_creg_regex_get (FALSE);
     ciev_regex = mm_3gpp_ciev_regex_get ();
     cmti_regex = mm_3gpp_cmti_regex_get ();
     cusd_regex = mm_3gpp_cusd_regex_get ();
@@ -11731,14 +11713,11 @@ setup_ports (MMBroadbandModem *self)
         if (!ports[i])
             continue;
 
-        for (j = 0; j < array->len; j++)
-            mm_port_serial_at_add_unsolicited_msg_handler (MM_PORT_SERIAL_AT (ports[i]), (GRegex *)g_ptr_array_index (array, j), NULL, NULL, NULL);
+        mm_port_serial_at_add_unsolicited_msg_handler (MM_PORT_SERIAL_AT (ports[i]), creg_regex, NULL, NULL, NULL);
         mm_port_serial_at_add_unsolicited_msg_handler (MM_PORT_SERIAL_AT (ports[i]), ciev_regex, NULL, NULL, NULL);
         mm_port_serial_at_add_unsolicited_msg_handler (MM_PORT_SERIAL_AT (ports[i]), cmti_regex, NULL, NULL, NULL);
         mm_port_serial_at_add_unsolicited_msg_handler (MM_PORT_SERIAL_AT (ports[i]), cusd_regex, NULL, NULL, NULL);
     }
-
-    mm_3gpp_creg_regex_destroy (array);
 }
 
 /*****************************************************************************/
@@ -14284,7 +14263,7 @@ finalize (GObject *object)
         ports_context_unref (self->priv->in_call_ports_ctx);
 
     if (self->priv->modem_3gpp_registration_regex)
-        mm_3gpp_creg_regex_destroy (self->priv->modem_3gpp_registration_regex);
+        g_regex_unref (self->priv->modem_3gpp_registration_regex);
 
     g_free (self->priv->carrier_config_mapping);
 

@@ -900,35 +900,24 @@ static const gchar *creg_regex[] = {
     [13] = "\\+(C5GREG):\\s*([0-9]+)\\s*,\\s*([0-9+])\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*([0-9]+)\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)",
 };
 
-GPtrArray *
+GRegex *
 mm_3gpp_creg_regex_get (gboolean solicited)
 {
-    GPtrArray *array;
+    g_autoptr(GString) pattern = NULL;
     guint      i;
 
-    array = g_ptr_array_sized_new (G_N_ELEMENTS (creg_regex));
+    pattern = g_string_sized_new(4096);
+
     for (i = 0; i < G_N_ELEMENTS (creg_regex); i++) {
-        GRegex           *regex;
-        g_autofree gchar *pattern = NULL;
-
         if (solicited) {
-            pattern = g_strdup_printf ("%s$", creg_regex[i]);
-            regex = g_regex_new (pattern, G_REGEX_RAW | G_REGEX_OPTIMIZE, 0, NULL);
+            g_string_append_printf (pattern, "%s$|", creg_regex[i]);
         } else {
-            pattern = g_strdup_printf ("\\r\\n%s\\r\\n", creg_regex[i]);
-            regex = g_regex_new (pattern, G_REGEX_RAW | G_REGEX_OPTIMIZE, 0, NULL);
+            g_string_append_printf (pattern, "\\r\\n%s\\r\\n|", creg_regex[i]);
         }
-        g_assert (regex);
-        g_ptr_array_add (array, regex);
     }
-    return array;
-}
-
-void
-mm_3gpp_creg_regex_destroy (GPtrArray *array)
-{
-    g_ptr_array_foreach (array, (GFunc) g_regex_unref, NULL);
-    g_ptr_array_free (array, TRUE);
+    /* truncate last | char */
+    g_string_truncate (pattern, pattern->len - 1);
+    return g_regex_new (pattern->str, G_REGEX_RAW | G_REGEX_OPTIMIZE, 0, NULL);
 }
 
 /*************************************************************************/
@@ -2013,20 +2002,6 @@ mm_3gpp_parse_cgact_read_response (const gchar *reply,
 
 /*************************************************************************/
 
-static gboolean
-item_is_lac_not_stat (GMatchInfo *info, guint32 item)
-{
-    gchar *str;
-    gboolean is_lac = FALSE;
-
-    /* A <stat> will always be a digit < 100, without quotes */
-    str = g_match_info_fetch (info, item);
-    g_assert (str);
-    is_lac = (strchr (str, '"') || strlen (str) > 2);
-    g_free (str);
-    return is_lac;
-}
-
 gboolean
 mm_3gpp_parse_creg_response (GMatchInfo                    *info,
                              gpointer                       log_object,
@@ -2042,7 +2017,7 @@ mm_3gpp_parse_creg_response (GMatchInfo                    *info,
     gint n_matches, act = -1;
     guint stat = 0;
     guint64 lac = 0, ci = 0;
-    guint istat = 0, ilac = 0, ici = 0, iact = 0;
+    guint ireg = 0, istat = 0, ilac = 0, ici = 0, iact = 0;
     gchar *str;
 
     g_assert (info != NULL);
@@ -2054,97 +2029,129 @@ mm_3gpp_parse_creg_response (GMatchInfo                    *info,
     g_assert (out_cereg != NULL);
     g_assert (out_c5greg != NULL);
 
-    str = g_match_info_fetch (info, 1);
+    /* Each regex in the array adds to the number of matches (e.g. first regex
+     * will match in indices 1 and 2, but second regex will use indices 3/4/5
+     * etc), so we "just" need to process each regex in order */
+    n_matches = g_match_info_get_match_count (info);
+    switch (n_matches) {
+    case 3:
+        /* +CREG: <stat>                      (GSM 07.07 CREG=1 unsolicited) */
+        /* [0] = "\\+(CREG|CGREG|CEREG|C5GREG):\\s*0*([0-9])", */
+        ireg = n_matches - 2;
+        istat = n_matches - 1;
+        break;
+    case 6:
+        /* +CREG: <n>,<stat>                  (GSM 07.07 CREG=1 solicited) */
+        /* [1] = "\\+(CREG|CGREG|CEREG|C5GREG):\\s*0*([0-9]),\\s*0*([0-9])", */
+        ireg = n_matches - 3;
+        istat = n_matches - 1;
+        break;
+    case 10:
+        /* +CREG: <stat>,<lac>,<ci>           (GSM 07.07 CREG=2 unsolicited) */
+        /* [2] = "\\+(CREG|CGREG|CEREG):\\s*0*([0-9]),\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)", */
+        ireg = n_matches - 4;
+        istat = n_matches - 3;
+        ilac = n_matches - 2;
+        ici = n_matches - 1;
+        break;
+    case 15:
+    case 20:
+        /* +CREG: <n>,<stat>,<lac>,<ci>       (GSM 07.07 solicited and some CREG=2 unsolicited) */
+        /* [3] = "\\+(CREG|CGREG|CEREG):\\s*([0-9]),\\s*([0-9])\\s*,\\s*([^,]*)\\s*,\\s*([^,\\s]*)", */
+        /* [4] = "\\+(CREG|CGREG|CEREG):\\s*0*([0-9]),\\s*0*([0-9])\\s*,\\s*(\"[^,]*\")\\s*,\\s*(\"[^,\\s]*\")", */
+        ireg = n_matches - 5;
+        istat = n_matches - 3;
+        ilac = n_matches - 2;
+        ici = n_matches - 1;
+        break;
+    case 25:
+    case 30:
+        /* +CREG: <stat>,<lac>,<ci>,<AcT>     (ETSI 27.007 CREG=2 unsolicited) */
+        /* [5] = "\\+(CREG|CGREG|CEREG):\\s*([0-9])\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*([0-9])", */
+        /* [6] = "\\+(CREG|CGREG|CEREG):\\s*0*([0-9])\\s*,\\s*(\"[^,\\s]*\")\\s*,\\s*(\"[^,\\s]*\")\\s*,\\s*0*([0-9])", */
+        ireg = n_matches - 5;
+        istat = n_matches - 4;
+        ilac = n_matches - 3;
+        ici = n_matches - 2;
+        iact = n_matches - 1;
+        break;
+    case 36:
+        /* +CREG: <n>,<stat>,<lac>,<ci>,<AcT> (ETSI 27.007 solicited and some CREG=2 unsolicited) */
+        /* [7] = "\\+(CREG|CGREG|CEREG):\\s*0*([0-9]),\\s*0*([0-9])\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*0*([0-9])", */
+        ireg = n_matches - 6;
+        istat = n_matches - 4;
+        ilac = n_matches - 3;
+        ici = n_matches - 2;
+        iact = n_matches - 1;
+        break;
+    case 42:
+        /* +CREG: <n>,<stat>,<lac>,<ci>,<AcT?>,<something> (Samsung Wave S8500) */
+        /* '<CR><LF>+CREG: 2,1,000B,2816, B, C2816<CR><LF><CR><LF>OK<CR><LF>' */
+        /* [8] = "\\+(CREG|CGREG):\\s*0*([0-9]),\\s*0*([0-9])\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*[^,\\s]*", */
+        ireg = n_matches - 6;
+        istat = n_matches - 4;
+        ilac = n_matches - 3;
+        ici = n_matches - 2;
+        iact = n_matches - 1;
+        break;
+    case 48:
+        /* +CREG: <stat>,<lac>,<ci>,<AcT>,<RAC> (ETSI 27.007 v9.20 CREG=2 unsolicited with RAC) */
+        /* [9] = "\\+(CREG|CGREG):\\s*0*([0-9])\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*0*([0-9])\\s*,\\s*([^,\\s]*)", */
+        ireg = n_matches - 6;
+        istat = n_matches - 5;
+        ilac = n_matches - 4;
+        ici = n_matches - 3;
+        iact = n_matches - 2;
+        break;
+    case 54:
+        /* +CEREG: <stat>,<lac>,<rac>,<ci>,<AcT>     (ETSI 27.007 v8.6 CREG=2 unsolicited with RAC) */
+        /* [10] = "\\+(CEREG):\\s*0*([0-9])\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*0*([0-9])", */
+        ireg = n_matches - 6;
+        istat = n_matches - 5;
+        ilac = n_matches - 4;
+        ici = n_matches - 2;
+        iact = n_matches - 1;
+        break;
+    case 61:
+        /* +CEREG: <n>,<stat>,<lac>,<rac>,<ci>,<AcT> (ETSI 27.007 v8.6 CREG=2 solicited with RAC) */
+        /* [11] = "\\+(CEREG):\\s*0*([0-9]),\\s*0*([0-9])\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*0*([0-9])", */
+        ireg = n_matches - 7;
+        istat = n_matches - 5;
+        ilac = n_matches - 4;
+        ici = n_matches - 2;
+        iact = n_matches - 1;
+        break;
+    case 68:
+        /* +C5GREG: <stat>,<lac>,<ci>,<AcT>,<Allowed_NSSAI_length>,<Allowed_NSSAI>   (ETSI 27.007 CREG=2 unsolicited) */
+        /* [12] = "\\+(C5GREG):\\s*([0-9]+)\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*([0-9]+)\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)", */
+        ireg = n_matches - 7;
+        istat = n_matches - 6;
+        ilac = n_matches - 5;
+        ici = n_matches - 4;
+        iact = n_matches - 3;
+        break;
+    case 76:
+        /* +C5GREG: <n>,<stat>,<lac>,<ci>,<AcT>,<Allowed_NSSAI_length>,<Allowed_NSSAI> (ETSI 27.007 solicited) */
+        /* [13] = "\\+(C5GREG):\\s*([0-9]+)\\s*,\\s*([0-9+])\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)\\s*,\\s*([0-9]+)\\s*,\\s*([^,\\s]*)\\s*,\\s*([^,\\s]*)", */
+        ireg = n_matches - 8;
+        istat = n_matches - 6;
+        ilac = n_matches - 5;
+        ici = n_matches - 4;
+        iact = n_matches - 3;
+        break;
+    default:
+        g_set_error_literal (error,
+                             MM_CORE_ERROR, MM_CORE_ERROR_FAILED,
+                             "Could not parse the registration status response (invalid match count)");
+        return FALSE;
+    }
+
+    /* Reg type */
+    str = g_match_info_fetch (info, ireg);
     *out_cgreg = (str && strstr (str, "CGREG")) ? TRUE : FALSE;
     *out_cereg = (str && strstr (str, "CEREG")) ? TRUE : FALSE;
     *out_c5greg = (str && strstr (str, "C5GREG")) ? TRUE : FALSE;
     g_free (str);
-
-    /* Normally the number of matches could be used to determine what each
-     * item is, but we have overlap in one case.
-     */
-    n_matches = g_match_info_get_match_count (info);
-    if (n_matches == 3) {
-        /* CREG=1: +CREG: <stat> */
-        istat = 2;
-    } else if (n_matches == 4) {
-        /* Solicited response: +CREG: <n>,<stat> */
-        istat = 3;
-    } else if (n_matches == 5) {
-        /* CREG=2 (GSM 07.07): +CREG: <stat>,<lac>,<ci> */
-        istat = 2;
-        ilac = 3;
-        ici = 4;
-    } else if (n_matches == 6) {
-        /* CREG=2 (ETSI 27.007): +CREG: <stat>,<lac>,<ci>,<AcT>
-         * CREG=2 (non-standard): +CREG: <n>,<stat>,<lac>,<ci>
-         */
-
-        /* Check if the third item is the LAC to distinguish the two cases */
-        if (item_is_lac_not_stat (info, 3)) {
-            istat = 2;
-            ilac = 3;
-            ici = 4;
-            iact = 5;
-        } else {
-            istat = 3;
-            ilac = 4;
-            ici = 5;
-        }
-    } else if (n_matches == 7) {
-        /* CREG=2 (solicited):            +CREG: <n>,<stat>,<lac>,<ci>,<AcT>
-         * CREG=2 (unsolicited with RAC): +CREG: <stat>,<lac>,<ci>,<AcT>,<RAC>
-         * CEREG=2 (solicited):           +CEREG: <n>,<stat>,<lac>,<ci>,<AcT>
-         * CEREG=2 (unsolicited with RAC): +CEREG: <stat>,<lac>,<rac>,<ci>,<AcT>
-         */
-
-        if (*out_cereg) {
-            /* Check if the third item is the LAC to distinguish the two cases */
-            if (item_is_lac_not_stat (info, 3)) {
-                istat = 2;
-                ilac  = 3;
-            } else {
-                istat = 3;
-                ilac  = 4;
-            }
-            ici  = 5;
-            iact = 6;
-        } else {
-            /* Check if the third item is the LAC to distinguish the two cases */
-            if (item_is_lac_not_stat (info, 3)) {
-                istat = 2;
-                ilac  = 3;
-                ici   = 4;
-                iact  = 5;
-            } else {
-                istat = 3;
-                ilac  = 4;
-                ici   = 5;
-                iact  = 6;
-            }
-        }
-    } else if (n_matches == 8) {
-        /* CEREG=2 (solicited with RAC):  +CEREG: <n>,<stat>,<lac>,<rac>,<ci>,<AcT>
-         * C5GREG=2 (unsolicited):        +C5GREG: <stat>,<tac>,<ci>,<AcT>,<Allowed_NSSAI_length>,<Allowed_NSSAI>
-         */
-        if (*out_cereg) {
-            istat = 3;
-            ilac  = 4;
-            ici   = 6;
-            iact  = 7;
-        } else if (*out_c5greg) {
-            istat = 2;
-            ilac  = 3;
-            ici   = 4;
-            iact  = 5;
-        }
-    } else if (n_matches == 9) {
-        /* C5GREG=2 (solicited): +C5GREG: <n>,<stat>,<tac>,<ci>,<AcT>,<Allowed_NSSAI_length>,<Allowed_NSSAI> */
-        istat = 3;
-        ilac  = 4;
-        ici   = 5;
-        iact  = 6;
-    }
 
     /* Status */
     if (!mm_get_uint_from_match_info (info, istat, &stat)) {
